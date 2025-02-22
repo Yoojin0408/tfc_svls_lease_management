@@ -1,0 +1,177 @@
+{
+    "Comment": "A description of my state machine",
+    "StartAt": "Extract Data",
+    "States": {
+      "Extract Data": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "FunctionName": "${TfcExtractDataFunctionArn}",
+          "Payload.$": "$"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 1,
+            "MaxAttempts": 3,
+            "BackoffRate": 2,
+            "JitterStrategy": "FULL"
+          }
+        ],
+        "Next": "Verification"
+      },
+      "Verification": {
+        "Type": "Parallel",
+        "Branches": [
+          {
+            "StartAt": "Contract Validation Check",
+            "States": {
+              "Contract Validation Check": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Retry": [
+                  {
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                  }
+                ],
+                "End": true,
+                "Parameters": {
+                  "FunctionName": "${TfcValidateContractFunctionArn}",
+                  "Payload.$": "$"
+                },
+                "ResultSelector": {
+                  "contract.$": "$.Payload.isValid"
+                }
+              }
+            }
+          },
+          {
+            "StartAt": "Compliance Check",
+            "States": {
+              "Compliance Check": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Retry": [
+                  {
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                  }
+                ],
+                "End": true,
+                "Parameters": {
+                  "FunctionName": "${TfcValidateComplianceFunctionArn}",
+                  "Payload.$": "$"
+                },
+                "ResultSelector": {
+                  "compliance.$": "$.Payload.isValid"
+                }
+              }
+            }
+          }
+        ],
+        "ResultSelector": {
+          "contractResult.$": "$[0].contract",
+          "complianceResult.$": "$[1].compliance"
+        },
+        "ResultPath": "$.results",
+        "Next": "Valid or Invalid"
+      },
+      "Valid or Invalid": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Variable": "$.results.contractResult",
+                "BooleanEquals": true
+              },
+              {
+                "Variable": "$.results.complianceResult",
+                "BooleanEquals": true
+              }
+            ],
+            "Next": "Add Lease Data",
+            "Comment": "Lease validated"
+          }
+        ],
+        "Default": "Deny Message"
+      },
+      "Add Lease Data": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::dynamodb:putItem",
+        "InputPath": "$.data",
+        "Parameters": {
+          "TableName": "${TfcLeaseTable}",
+          "Item": {
+            "id": {
+              "S.$": "$.ID"
+            },
+            "landloard": {
+              "S.$": "$.Landlord"
+            }
+          }
+        },
+        "ResultSelector": {
+          "statusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+        },
+        "ResultPath": "$.results.accountAddition",
+        "Next": "Validated Queue"
+      },
+      "Validated Queue": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sqs:sendMessage",
+        "Next": "Approve Message",
+        "Parameters": {
+          "QueueUrl": "${TfcValidatedLeaseQueueArn}",
+          "MessageBody.$": "$"
+        }
+      },
+      "Approve Message": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "End": true,
+        "Parameters": {
+          "TopicArn": "${TfcSendNotificationSNSTopicArn}",
+          "Message": {
+            "Status": "Lease validation successful",
+            "MessageId.$": "$.MessageId"
+          }
+        }
+      },
+      "Deny Message": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "End": true,
+        "Parameters": {
+          "TopicArn": "${TfcSendNotificationSNSTopicArn}",
+          "Message": {
+            "Status": "Lease validation failed",
+            "file_name.$": "$.key"
+          }
+        }
+      }
+    }
+  }

@@ -1,0 +1,26 @@
+{
+  "version": "0",
+  "id": "d76ebb39-779b-6501-817e-8ca9efd43234",
+  "detail-type": "Object Created",
+  "source": "aws.s3",
+  "account": "344612134556",
+  "time": "2025-02-18T22:17:31Z",
+  "region": "ap-southeast-2",
+  "resources": ["arn:aws:s3:::tfchomeworkbucket-yoojinc"],
+  "detail": {
+      "version": "0",
+      "bucket": {
+          "name": "tfchomeworkbucket-yoojinc"
+      },
+      "object": {
+          "key": "lease-doc-final.png",
+          "size": 89716,
+          "etag": "a20617d169d9dfb5a35c6c7398539d59",
+          "sequencer": "0067B506FB4E9E2775"
+      },
+      "request-id": "P3H97DMEQJQKQ56B",
+      "requester": "344612134556",
+      "source-ip-address": "220.233.199.142",
+      "reason": "PutObject"
+  }
+}

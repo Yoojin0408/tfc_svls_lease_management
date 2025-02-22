@@ -1,0 +1,19 @@
+{
+    "bucket": "tfchomeworkbucket-yoojinc",
+    "key": "lease-doc-final.png",
+    "data": {
+        "ID": "e0dacb76-d793-4b63-b5f4-5d6cebf0ce6b",
+        "Tenant ABN": "98 765 432 109",
+        "Tenant": "XYZ Enterprises Pty Ltd",
+        "Landlord ABN": "74 172 177 893",
+        "Property": "The premises located at 123 Commercial Street, Sydney, NSW, 2000",
+        "Landlord": "THE TRUSTEE FOR PSS FUND",
+        "Termination  Renewal": "The tenant may renew the lease for an additional 5-year term upon mutual agreement. Termination requires a 3-month notice from either party.",
+        "Date": "20/02/2025",
+        "Maintenance  Repairs": "The tenant is responsible for internal repairs, while the landlord is responsible for structural maintenance.",
+        "Lease Term": "The lease commences on 1st March 2025 and continues for a period of 5 years.",
+        "Page": "1",
+        "Rent  Payments": "The tenant agrees to pay a monthly rent of AUD 5,000, payable on the 1st day of each month.",
+        "signature_count": 1
+    }
+}

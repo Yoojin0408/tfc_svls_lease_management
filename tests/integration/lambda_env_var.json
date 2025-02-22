@@ -1,0 +1,5 @@
+{
+    "TfcExtractDataFunction": {
+        "idempotency_table": "lease-verification-service-TfcIdempotencyTable-1XOMEY6CV3V5I"
+    }
+}

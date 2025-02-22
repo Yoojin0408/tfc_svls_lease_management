@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lease-verification-service
+
+  Sample SAM Template for lease-verification-service
+
+Parameters:
+  Email:
+    Type: String
+    Description: A valid email that will be subscribed to the SNS topic for approval or deny notifications
+    AllowedPattern: "^(.+)@(\\S+)$"
+  ABNLookupGUID:
+    Type: String
+    Description: A valid GUID for accessing to the ABN Lookup web services
+
+Resources:
+  TfcAbnSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: tfc_abn_guid
+      Description: "This secret has unique ABN GUID or accessing to the ABN Lookup web services"
+      SecretString: !Ref ABNLookupGUID
+  TfcIdempotencyTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+  TfcHomeworkBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: "tfchomeworkbucket-yoojinc"
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: True
+  TfcExtractDataFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      Description: "change xray"
+      CodeUri: functions/extract_data
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      # Role: !GetAtt TfcLambdaExecutionRole.Arn
+      Timeout: 30
+      Layers: 
+        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
+      Tracing: Active
+      Environment:
+        Variables: 
+          idempotency_table: !Ref TfcIdempotencyTable
+      Policies:
+        - TextractDetectAnalyzePolicy: {}
+        - S3ReadPolicy:
+            BucketName: !Ref TfcHomeworkBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TfcIdempotencyTable
+  TfcValidateContractFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: functions/validate_contract
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Tracing: Active
+      Architectures:
+        - x86_64
+      Layers: 
+        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
+  TfcValidateComplianceFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: functions/validate_compliance
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Tracing: Active
+      Architectures:
+        - x86_64
+      Environment:
+        Variables: 
+          ABN_GUID: !Ref ABNLookupGUID
+      Policies:
+       - AWSSecretsManagerGetSecretValuePolicy:
+          SecretArn: !Ref TfcAbnSecret
+      Layers: 
+        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
+
+  TfcValidateDocumentStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/tfc_sfn_definition.asl.json
+      Tracing: 
+        Enabled: True
+      DefinitionSubstitutions:
+        TfcExtractDataFunctionArn: !GetAtt TfcExtractDataFunction.Arn
+        TfcValidateContractFunctionArn: !GetAtt TfcValidateContractFunction.Arn
+        TfcValidateComplianceFunctionArn: !GetAtt TfcValidateComplianceFunction.Arn
+        TfcLeaseTable: !Ref TfcLeaseTable
+        TfcSendNotificationSNSTopicArn: !Ref TfcSendLeaseNotificationSNSTopic
+        TfcValidatedLeaseQueueArn: !Ref TfcValidatedLeaseQueue
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref TfcExtractDataFunction      
+        - LambdaInvokePolicy:
+            FunctionName: !Ref TfcValidateContractFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref TfcValidateComplianceFunction
+        - DynamoDBWritePolicy:
+            TableName: !Ref TfcLeaseTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt TfcSendLeaseNotificationSNSTopic.TopicName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TfcValidatedLeaseQueue.QueueName
+        - S3ReadPolicy:
+            BucketName: !Ref TfcHomeworkBucket
+      # The Step Functions workflow is triggered each time an object is created in our S3 bucket.
+      Events:
+        StateChange:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref TfcHomeworkBucket
+  TfcLeaseTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+
+  TfcSendLeaseNotificationSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref Email 
+          Protocol: email
+
+  TfcValidatedLeaseQueue:
+    Type: AWS::SQS::Queue
+
+  # TfcLambdaRole:
+  #   Type: "AWS::IAM::Role"
+  #   Properties:
+  #     RoleName: TfcLambdaRole
+  #     Description: !Sub "DO NOT DELETE - Used for TFC homework. Created by CloudFormation ${AWS::StackId}"
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: "lambda.amazonaws.com"
+  #           Action: "sts:AssumeRole"
+  #     Policies:
+  #       - PolicyName: AllowTextract
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action: "textract:AnalyzeDocument"
+  #       - PolicyName: AllowStepFunctions
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action: "states:StartExecution"
+  #               Resource: !GetAtt TfcLambdaRole.Arn
+  #       - PolicyName: AllowCloudWatchLog
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - "logs:CreateLogGroup",
+  #                 - "logs:CreateLogStream",
+  #                 - "logs:PutLogEvents"
+  #               Resource: "arn:aws:logs:*:*:*"
+  #       - PolicyName: AllowS3
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - "s3:*",
+  #               Resource: 
+  #                 - "arn:aws:s3:::{!Ref TransactionTable}/*"
+      # ManagedPolicyArns:
+      #   - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+      
+
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  TfcExtractDataFunction:
+    Description: "Extract Data Lambda Function ARN"
+    Value: !GetAtt TfcExtractDataFunction.Arn
+  TfcValidateDocumentStateMachine:
+    Description: "Document Validation State Machine ARN"
+    Value: !Ref TfcValidateDocumentStateMachine
