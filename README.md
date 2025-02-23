@@ -2,13 +2,13 @@
 
 The example appplication is based on commercial lease management domain, primarily for retail customers. Customer signs a new commercial lease agreement and uploads the document to manage and analyse the data. The example is an event based serverless architecture that uses Lambda, Step Functions, SQS, SNS, S3, DynamoDB services. 
 
-![architecture](../architecture/architecture.png)
+![architecture](architecture/architecture.png)
 
 1. User uploads lease document (pdf) to S3 bucket
 2. PutEvent triggers EventBridge which will start state machine execution
 3. The Step Function workflow is as below:
 
-![sfn-definition](../architecture/stepfunctions_graph.png)
+![sfn-definition](architecture/stepfunctions_graph.png)
 
   - State machine triggers lambda function that extracts data from lease document using Textract
   - Then, state machine triggers two lambda functions in parallel:
